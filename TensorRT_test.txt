@@ -1,0 +1,38 @@
+mkdir -p ~/jetson-test
+cd ~/jetson-test
+
+python3 <<'PY'
+import struct
+import tensorrt as trt
+
+logger = trt.Logger(trt.Logger.WARNING)
+builder = trt.Builder(logger)
+network = builder.create_network(0)
+config = builder.create_builder_config()
+config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE, 64 << 20)
+
+x = network.add_input("input", trt.float32, (1, 4))
+layer = network.add_activation(x, trt.ActivationType.RELU)
+output = layer.get_output(0)
+output.name = "output"
+network.mark_output(output)
+
+engine = builder.build_serialized_network(network, config)
+if engine is None:
+    raise RuntimeError("モデルの作成に失敗しました")
+
+with open("relu_test.engine", "wb") as f:
+    f.write(engine)
+
+with open("input.bin", "wb") as f:
+    f.write(struct.pack("<4f", -2.0, -1.0, 1.0, 2.0))
+
+print("モデル作成成功")
+PY
+
+
+/usr/src/tensorrt/bin/trtexec \
+  --loadEngine=relu_test.engine \
+  --loadInputs=input:input.bin \
+  --duration=3 \
+  --dumpOutput
